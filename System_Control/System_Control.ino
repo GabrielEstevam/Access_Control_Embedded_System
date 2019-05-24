@@ -1,5 +1,14 @@
 #include <Arduino.h>
 #include <LiquidCrystal.h>
+#include <string.h>
+#include <FS.h>
+#include <SPIFFS.h>
+#include <SimpleTimer.h>
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#include <WiFiClientSecure.h>
+#include <ESPAsyncWebServer.h>
+#include <ArduinoJson.h>
 
 #define LED 2
 
@@ -21,6 +30,11 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 uint8_t lenBase = 4;
 String base[] = {"1234", "6548", "6498", "0055"};
 uint8_t i, flag = 0;
+char ssid[20];
+char password[10];
+AsyncWebServer server(80);
+
+bool loadConfig();
 
 void IRAM_ATTR isr(void* arg) {
     InputCapsense* s = static_cast<InputCapsense*>(arg);
@@ -98,7 +112,38 @@ void setup() {
     pinMode(entry.PINbit4, INPUT);
     pinMode(LED, OUTPUT);
     attachInterruptArg(entry.INTERRUPT_LINE, isr, &entry, RISING);
-    lcd.begin(16, 2);
+    lcd.begin(16, 2);  
+    if(!SPIFFS.begin()){ // inicializa sistema de arquivos
+        Serial.println("\n<erro> Falha enquando montava SPIFFS");
+    if (!loadConfig())  // carrega as configuraçõe
+        Serial.println("\n<erro> Falha ao ler arquivo |config.json|");
+    
+    /* ===============    CONEXAO WIFI     ============== */
+    
+    //IPAddress local_IP(192, 168, 1, 184); // Set your Static IP address
+    //IPAddress gateway(192, 168, 1, 1); // Set your Gateway IP address
+    //IPAddress subnet(255, 255, 0, 0);
+    //IPAddress primaryDNS(8, 8, 8, 8);   //optional
+    //IPAddress secondaryDNS(8, 8, 4, 4); //optional
+    //if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) // Configures static IP address
+    //    Serial.println("STA Failed to configure");
+
+    WiFi.mode(WIFI_AP); // WIFI_STA (conecta-se em alguem), WIFI_AP (é um ponto de acesso)
+    WiFi.softAP(ssid, password,1,0,1); // SSID max[63], password max[8] - NULL é aberto, channel (1-13), ssid_hidden (0=broadcast SSID, 1=hide SSID), max_connection clientes (1-4)
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
+    
+    // https://techtutorialsx.com/2018/08/24/esp32-web-server-serving-html-from-file-system/
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/test_file.html", "text/html");
+    });
+
+    server.on("/test", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(200, "text/plain", "text/html");
+    });
+ 
+    server.begin(); // Inicia servidor
 }
 
 void loop() {
@@ -124,4 +169,29 @@ void loop() {
         }
         entry.enter = false;
     }
+}
+
+
+
+/* ===============   FUNCAO LOAD CONFIG   ============== */
+bool loadConfig() {
+  File configFile = SPIFFS.open("/config.json", FILE_READ);
+  
+  if (!configFile)
+    return false;
+
+  StaticJsonDocument<256> doc;
+  
+  DeserializationError error = deserializeJson(doc, configFile);
+  if (error)
+    return false;
+  
+  JsonObject json = doc.as<JsonObject>();
+
+  strcpy(ssid, json["servername"]);
+  strcpy(password, json["password"]);
+
+  configFile.close();
+
+  return true;
 }
