@@ -136,7 +136,7 @@ void setup() {
     
     // https://techtutorialsx.com/2018/08/24/esp32-web-server-serving-html-from-file-system/
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(SPIFFS, "/test_file.html", "text/html");
+        request->send(SPIFFS, "/index.html", "text/html");
     });
 
     server.on("/test", HTTP_GET, [](AsyncWebServerRequest *request){
