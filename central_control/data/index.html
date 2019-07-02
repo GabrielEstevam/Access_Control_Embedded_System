@@ -16,13 +16,27 @@
 
 <h3>Gerência de Usuários</h3>
 
+<h4> Configuração da Rede </h4>
+<td><button onclick="editConfigNetwork()">Configurar Rede</button></td>
+<div id="spoiler-admin" role="aria-hidden">
+  <br>
+  <h4> Editar Configuração da Rede </h4>
+  <form action="javascript:void(0);" method="POST" id="saveAdmin">
+    Nome da Rede:
+    <input type="text" id="edit-name-admin">
+    Senha da Rede:
+    <input type="password" id="edit-password-admin">
+    <input type="submit" value="Salvar" /> <a onclick="closeInputAdmin()" aria-label="Close">&#10006;</a>
+  </form>
+</div>
+
 <!-- Insercao de usuarios -->
 <h4>Novo Usuário</h4>
 <form action="javascript:void(0);" method="POST" onsubmit="addUser()" target="_blank">
   Nome:
   <input type="text" id="add-name" placeholder="Insira o nome">
   Senha:
-  <input type="text" id="add-password" placeholder="Insira a senha">
+  <input type="password" pattern = "[0-9]*" inputmode = "numeric" id="add-password" placeholder="Insira a senha" min="4" max="4">
   <input type="submit" value="Adicionar">
   <input type="reset">
 </form>
@@ -47,12 +61,10 @@
     Nome:
     <input type="text" id="edit-name">
     Senha:
-    <input type="text" id="edit-password">
+     <input type="password" pattern = "[0-9]*" inputmode = "numeric" id="edit-password" placeholder="Insira a senha" min="4" max="4">
     <input type="submit" value="Salvar" /> <a onclick="closeInput()" aria-label="Close">&#10006;</a>
   </form>
 </div>
-
-<div id="spoiler" role
 
 <!-- jQuery min script -->
 <script> /*! jQuery v3.4.0 | (c) JS Foundation and other contributors | jquery.org/license */
@@ -60,6 +72,8 @@
 </script>
 
 <script>
+
+closeInputAdmin();
 
 /* Armazena os dados localmente */
 var users = [];
@@ -168,6 +182,30 @@ function editUser(item) {
   }
 };
 
+/* Edita name admin */
+function editConfigNetwork() {
+  var el1 = document.getElementById('edit-name-admin');
+  var el2 = document.getElementById('edit-password-admin');
+  // Mostrar os campos
+  document.getElementById('spoiler-admin').style.display = 'block';
+  self = this;
+  
+  /* Salva edicao */
+  document.getElementById('saveAdmin').onsubmit = function() {
+    // Obtem valores
+    var user = el1.value;
+    var password = el2.value;
+    if (user && password) {
+      // Fecha os campos de edicao
+      closeInputAdmin(); 
+      /* metodo get - envia dados do usuario editado para o servidor */
+      $.get("/editadmin?message=" + user + ":" + password, function(data){
+        alert(data);
+      });
+    }
+  }
+};
+
 /* Deleta usuario */
 function deleteUser(item) {
   /* metodo get - envia dados do usuario editado para o servidor */
@@ -180,6 +218,12 @@ function deleteUser(item) {
 function closeInput() {
   document.getElementById('spoiler').style.display = 'none';
 }
+
+/* Desabilida os campos de edicao do admin*/
+function closeInputAdmin() {
+  document.getElementById('spoiler-admin').style.display = 'none';
+}
+
 
 /* jQuery - Carrega tabela de usuarios */
 $(document).ready(function(){

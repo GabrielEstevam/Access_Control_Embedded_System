@@ -1,3 +1,6 @@
+/********************************************************************
+ *      Sistema de Controle de Acesso com Autenticacao por Senha
+ *******************************************************************/
 #include <Arduino.h>
 #include <LiquidCrystal.h>
 #include <string.h>
@@ -5,13 +8,14 @@
 #include <SPIFFS.h>
 #include <SimpleTimer.h>
 #include <WiFi.h>
-#include <WiFiMulti.h>
+//#include <WiFiMulti.h>
+#include <WiFiAP.h>
 #include <WiFiClientSecure.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <bits/stdc++.h>
  
-/* Estrutura que defini o periferico de entrada */
+/* Estrutura que define o periferico de entrada */
 struct InputCapsense {
     const uint8_t INTERRUPT_LINE = 18;
     const uint8_t PINbit1 = 27;
@@ -24,7 +28,7 @@ struct InputCapsense {
     bool enter = false;
 };
 
-/* Estrutura que defini o formato de dados dos usuarios */
+/* Estrutura que define o formato de dados dos usuarios */
 struct User {
     String _name;
     String password;
@@ -36,13 +40,13 @@ struct User {
 #define RESET 19
 
 InputCapsense entry; // periferico de entrada 
-const int rs = 4, en = 15, d4 = 26, d5 = 25, d6 = 33, d7 = 32; // defini pinos do lcd
+const int rs = 4, en = 15, d4 = 26, d5 = 25, d6 = 33, d7 = 32; // define pinos do lcd
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7); // configura os pinos do lcd
 
-/* Variaveis da conhexao wifi */
+/* Variaveis da conexao wifi */
 char ssid[20]; // id da rede wifi
-char wifi_password[10]; // sinha da rede wifi
-AsyncWebServer server(80); // Defini a porta do servidor
+char wifi_password[10]; // senha da rede wifi
+AsyncWebServer server(80); // Define a porta do servidor
 const char* PARAM_MESSAGE = "message"; // recebe a mensagem passada pela pagina web
 
 /* Variaveis do sistema de arquivo */
@@ -111,7 +115,10 @@ void setup() {
     readFileUsers();
     
     /* ===============    CONEXAO WIFI     ============== */
+    
     WiFi.mode(WIFI_AP); // WIFI_STA (conecta-se em alguem), WIFI_AP (é um ponto de acesso)
+    //Serial.println("SSID_1: "+String(ssid)+" , PASSWORD_1: "+String(wifi_password));
+    
     WiFi.softAP(ssid,wifi_password,1,0,1); // SSID max[63], password max[8] - NULL é aberto, channel (1-13), ssid_hidden (0=broadcast SSID, 1=hide SSID), max_connection clientes (1-4)
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -160,6 +167,18 @@ void setup() {
             request->send(200, "text/plain", msg);
         }
     });
+
+       // Send a GET request to <IP>/editadmin
+    server.on("/editadmin", HTTP_GET, [] (AsyncWebServerRequest *request) {
+        String msg;
+        if (request->hasParam(PARAM_MESSAGE)) {
+            msg = request->getParam(PARAM_MESSAGE)->value();
+            editAdmin(msg);
+            request->send(200, "text/plain", "ADMIN ALTERADO COM SUCESSO!!!");
+            vTaskDelay(1000);
+            ESP.restart();
+        }
+    });
     
     server.onNotFound(notFound);
     server.begin(); // Inicia servidor
@@ -175,15 +194,20 @@ void loop() {
                 trava = 1;
                 lcd.setCursor(0,0);
                 lcd.clear();
-                lcd.print("Bem Vindo!");
-                lcd.setCursor(0,1);
+                lcd.print("   Bem Vindo!   ");
+                 /*Centraliza o nome do Usuário*/
+                if (usersData[i]._name.length() <= 16){
+                  lcd.setCursor(7-(usersData[i]._name.length()/2),1);
+                }else { 
+                  lcd.setCursor(0,1);
+                }
                 lcd.print(usersData[i]._name);
                 break;
             }
         }
         
         if (trava) {
-            /*Abrir trava*/
+            /*Abrir a trava*/
             digitalWrite(LED, HIGH);
             trava = 0;
         } else {
@@ -286,21 +310,54 @@ void resetFactory(){
   if(flag_reset){
     deleteFile(SPIFFS, "/users.txt");
     writeFile(SPIFFS, "/users.txt", "");
-    // resetar o arquivo config.json
-    // restart ESP
-    flag_reset = false;
+    flag_reset = false; 
+    deleteFile(SPIFFS, "/config.json");
+    ESP.restart();
   }
 }
 void notFound(AsyncWebServerRequest *request) {
-    request->send(404, "text/plain", "Deixa eu falar com o Goiaba!");
+    request->send(404, "text/plain", "ERROR: PAGE NOT FOUND!");
+}
+
+bool editAdmin(String msg){
+
+   _name = "";
+    password = "";
+    flagName = 1;
+    for (i = 0; i < msg.length(); i++) {
+        if (flagName) {
+            if (msg[i] == ':') {
+                flagName = 0;
+            } else {
+                _name += msg[i];
+            }
+        } else {
+            password += msg[i];
+        }
+    }
+  
+  deleteFile(SPIFFS,"/config.json");
+  String stringAppendFile = "{\"servername\": \""+String(_name)+"\",\"password\": \""+String(password)+"\"}";
+  Serial.println(stringAppendFile);
+  char char_array[stringAppendFile.length() + 1];
+  strcpy(char_array, stringAppendFile.c_str());
+  writeFile(SPIFFS, "/config.json", char_array);
+
+  return true;
+  
 }
 
 bool loadConfig() {
-  File configFile = SPIFFS.open("/config.json", FILE_READ);
   
-  if (!configFile)
+  if (!SPIFFS.exists("/config.json")){
+    writeFile(SPIFFS,"/config.json","{\"servername\": \"ServidorTrava\",\"password\": \"12345678\"}");
+  }
+  
+  File configFile = SPIFFS.open("/config.json", FILE_READ);
+  if (!configFile){
     return false;
-
+  }
+  
   StaticJsonDocument<256> doc;
   
   DeserializationError error = deserializeJson(doc, configFile);
@@ -311,7 +368,7 @@ bool loadConfig() {
 
   strcpy(ssid, json["servername"]);
   strcpy(wifi_password, json["password"]);
-
+  Serial.println("SSID: "+String(ssid)+" , PASSWORD: "+String(wifi_password));
   configFile.close();
 
   return true;
